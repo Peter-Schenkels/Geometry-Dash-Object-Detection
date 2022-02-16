@@ -1,0 +1,77 @@
+const aeConfiguration = {
+    appName: 'ucp-desktop',
+    adEngine: {
+        version: 'v101.28.0',
+    },
+    trackingOptIn: {
+        version: 'v8.0.2',
+    },
+    withVersion: true
+};
+const beaconBucketRegex = ``;
+let aeApp = aeConfiguration.appName || 'fandomdesktop';
+let aeGeo = '';
+let aeVersion = '';
+const aeStorage = '//static.wikia.nocookie.net/fandom-ae-assets';
+
+function addScript(url) {
+    const e = document.createElement("script");
+    e.src = url;
+    e.type = "text/javascript";
+    e.async = true;
+    document.head.appendChild(e);
+}
+
+function addStyles(url) {
+    const e = document.createElement("link");
+    e.href = url;
+    e.rel = "stylesheet";
+    document.head.appendChild(e);
+}
+
+function getCookie(name) {
+    return document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)')?.pop() || null;
+}
+
+if (aeConfiguration.withGeo) {
+    let aeGeoCookie = getCookie("Geo");
+    aeGeoCookie = JSON.parse(decodeURIComponent(aeGeoCookie));
+    aeGeo = aeGeoCookie ? aeGeoCookie.country : "";
+}
+
+if (aeConfiguration.withVersion) {
+    const versionRegex = /(^v(\d+\.){2}\d+$|ADEN-.+|local|latest)/g;
+    if (window.location.search.indexOf('adengine_version=') !== -1) {
+        aeVersion = window.location.search.split('adengine_version=').pop().split('&').shift();
+        if (aeVersion.match(versionRegex)) {
+            aeVersion = aeVersion.charAt(0) === 'v' || aeVersion === 'latest' ? aeVersion : `dev/${aeVersion}`;
+        } else {
+            aeVersion = '';
+        }
+    }
+}
+
+if (aeConfiguration.trackingOptIn) {
+    const toiVersion = aeGeo && aeConfiguration.trackingOptIn.geo ? aeConfiguration.trackingOptIn.geo[aeGeo] : aeConfiguration.trackingOptIn.version;
+    if (toiVersion) {
+        addScript(`${aeStorage}/tracking-opt-in/${toiVersion}/tracking-opt-in.min.js`);
+    }
+}
+
+if (aeConfiguration.adEngine) {
+    aeVersion = aeVersion || (aeGeo && aeConfiguration.adEngine.geo && aeConfiguration.adEngine.geo[aeGeo] ? aeConfiguration.adEngine.geo[aeGeo] : aeConfiguration.adEngine.version);
+
+    const beaconId = getCookie('wikia_beacon_id') || "";
+    if (beaconBucketRegex && beaconId.match(new RegExp(beaconBucketRegex))) {
+        // if beaconBucketAeApp is empty, fallback to default
+        aeApp = '' || aeApp;
+    }
+
+    if (aeVersion === 'dev/local') {
+        addScript(`http://localhost:9000/${aeApp}/main.bundle.js`);
+        addStyles(`http://localhost:9000/${aeApp}/styles.css`);
+    } else {
+        addScript(`${aeStorage}/platforms/${aeVersion}/${aeApp}/main.bundle.js`);
+        addStyles(`${aeStorage}/platforms/${aeVersion}/${aeApp}/styles.css`);
+    }
+}

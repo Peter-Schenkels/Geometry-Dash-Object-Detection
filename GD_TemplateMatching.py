@@ -1,10 +1,14 @@
 from tempfile import template
 import cv2 as cv
+from cv2 import imshow
 import numpy as np
 from matplotlib import pyplot as plt
 import time
 import random
 
+
+
+#TODO detect grid en slice image in cells
 
 def getRandomColor(nrOfColors):
 
@@ -79,16 +83,24 @@ def classifyBlobs(blobs, range):
     return groups
         
 
-class AreaOfInterest:
+class RegionOfInterest:
     def __init__(self, img, pos1, pos2) -> None:
         self.pos1, self.pos2 = pos1, pos2
         if(pos1[0] > pos2[0]):
             self.pos1 = pos2
             self.pos2 = pos1
-        self.img = cv.cvtColor(img[self.pos1[1]:self.pos2[1], self.pos1[0]:self.pos2[0]], cv.COLOR_BGR2GRAY)
-        test = 1
+        if(self.pos1[0] < 0):
+            self.pos1[0] = 0
+        if(self.pos2[0] < 0):
+            self.pos2[0] = 0
+        if(self.pos1[1] < 0):
+            self.pos1[1] = 0
+        if(self.pos2[1] < 0):
+            self.pos2[1] = 0
 
-def GetAreaOfInterest(image, range = 200):
+        self.img = cv.cvtColor(img[self.pos1[1]:self.pos2[1], self.pos1[0]:self.pos2[0]], cv.COLOR_BGR2GRAY)
+
+def GetRegionOfInterest(image, range = 200):
     # Setup SimpleBlobDetector parameters.
     params = cv.SimpleBlobDetector_Params()
 
@@ -113,16 +125,14 @@ def GetAreaOfInterest(image, range = 200):
     params.minInertiaRatio = 0.01
 
     # ori =  openAndScaleImage('image_01.jpg')
-    start = time.time()
-
-    detector = cv.SimpleBlobDetector_create(params)
+    # start = time.time()
     # keypoints = detector.detect(image)
     img = cv.Canny(image, 140, 200)
-    keypoints = detector.detect(img)
+    keypoints = cv.SimpleBlobDetector_create(params).detect(img)
     groups = classifyBlobs(keypoints, range)
 
-    print(time.time() - start)
-    cv.imshow("Canny", img)
+    # print(time.time() - start)
+    # cv.imshow("Canny", img)
 
     im_with_keypoints = image.copy()
     for group in groups:
@@ -131,11 +141,11 @@ def GetAreaOfInterest(image, range = 200):
     
     cv.imshow("blobps", im_with_keypoints)
 
-    aoi_list = []
+    roi_list = []
     for group in groups:
-        aoi_list.append(AreaOfInterest(image, group.rect.pos1, group.rect.pos2))
+        roi_list.append(RegionOfInterest(image, group.rect.pos1, group.rect.pos2))
     
-    return aoi_list
+    return roi_list
 
 def openAndScaleTemplate(filename):
     img = cv.imread(filename, 0)
@@ -152,6 +162,14 @@ def scalePercentage(percentage, img):
     return cv.resize(img, dim)
     
 
+
+def ScaleImage(img):
+    scale_percent = 60 # percent of original size
+    width = int(1920 * scale_percent / 100)
+    height = int(1080 * scale_percent / 100)
+    dim = (width, height)
+    return cv.resize(img, dim)
+
 def openAndScaleImage(filename):
     img = cv.imread(filename)
     scale_percent = 60 # percent of original size
@@ -159,20 +177,53 @@ def openAndScaleImage(filename):
     height = int(1080 * scale_percent / 100)
     dim = (width, height)
     return cv.resize(img, dim)
-    
+
+# def addTemplate(src, name, threshold, color):
+#     # (cv.Canny(cv.copyMakeBorder(openAndScaleTemplate('YOLOstuff\RegularBlock01.png'), 140, 200), 1, 1, 1, 1, cv.BORDER_CONSTANT), "Test_01", platform_threshold , (0, 255, 0))
+
+#     img = openAndScaleTemplate('YOLOstuff\RegularBlock01.png')
+#     img = cv.copyMakeBorder(img, 1, 1, 1, 1, cv.BORDER_CONSTANT)
+#     img = cv.Canny(img, 140, 200)
+
+#     plt.imshow(img)
+#     plt.show()
+
+#     return (img, name, threshold , color)
+
+
+
+def GeomDecter(input, templates):    
+
+    img_rgb = ScaleImage(input)
+    roi_list = GetRegionOfInterest(img_rgb, 300)
+    img_gray = cv.cvtColor(img_rgb, cv.COLOR_BGR2GRAY)
+    output = []
+    for template in templates:
+        w, h= template[0].shape[::-1]
+        for roi in roi_list:
+            if(roi.img.any()):
+                if(roi.img.shape[0] > template[0].shape[0] and roi.img.shape[1] > template[0].shape[1]):
+                    matches = (cv.matchTemplate(roi.img,template[0],cv.TM_CCOEFF_NORMED), template[1], w, h, template[2], template[3], roi.pos1)
+                    output.append(matches)
+
+    for set in output:
+        positions = np.where( set[0] >= set[4])
+        for position in list(zip(*positions[::-1])):
+            position += set[6]
+            cv.rectangle(img_rgb, position, (position[0] + set[2], position[1] + set[3]), set[5], 2)
+            cv.putText(img_rgb, set[1], position, cv.FONT_HERSHEY_COMPLEX, 0.5, set[5],1 )
+
+    return img_rgb
+
+
+
 if __name__ == "__main__":
 
+    skyradio = cv.VideoCapture("video.mov")
 
-    img_rgb = openAndScaleImage('image_01.jpg')
-    aoi_list = GetAreaOfInterest(img_rgb, 300)
-
-    # for aoi in aoi_list:
-    #     cv.imshow("Aoi", aoi.img)
-    #     cv.waitKey(0)
-
-
-    img_gray = cv.cvtColor(img_rgb, cv.COLOR_BGR2GRAY)
-
+    if not skyradio.isOpened():
+        raise Exception("Skyradio staat niet aan!!!")
+    skyradio.set(cv.CAP_PROP_POS_FRAMES, 100)
     templates =  []
 
     platform_threshold = 0.86
@@ -186,43 +237,16 @@ if __name__ == "__main__":
     templates.append((openAndScaleTemplate('Templates/platform_template_06.png'), "platform_06", platform_threshold , (0, 255, 0)))
     templates.append((openAndScaleTemplate('Templates/platform_template_07.png'), "platform_07", platform_threshold , (0, 255, 0)))
     templates.append((openAndScaleTemplate('Templates/spike_template_01.png'), "Spike_01", spike_threshold, (255, 255, 0)))
-    templates.append((openAndScaleTemplate('Templates/spike_template_02.png'), "Spike_02", spike_threshold, (255, 255, 0)))
-    templates.append((openAndScaleTemplate('Templates/spike_template_03.png'), "Spike_03", spike_threshold, (255, 255, 0)))
-    templates.append((openAndScaleTemplate('Templates/spike_template_04.png'), "Spike_04", spike_threshold, (255, 255, 0)))
+    # templates.append((openAndScaleTemplate('Templates/spike_template_02.png'), "Spike_02", spike_threshold, (255, 255, 0)))
+    # templates.append((openAndScaleTemplate('Templates/spike_template_03.png'), "Spike_03", spike_threshold, (255, 255, 0)))
+    # templates.append((openAndScaleTemplate('Templates/spike_template_04.png'), "Spike_04", spike_threshold, (255, 255, 0)))
     templates.append((openAndScaleTemplate('Templates/spikes_template_01.png'), "Spikes_01", 0.7, (255, 255, 0)))
 
-    output = []
+    while skyradio.isOpened():
+        read, frame = skyradio.read()
+        if(read is True):
+            output = GeomDecter(frame, templates)
+            cv.imshow('frame', output)
+            if cv.waitKey(1) == ord('q'):
+                break
 
-    start = time.time()
-
-    # canny = cv.Canny(img_rgb, 100, 200)
-    # cv.imshow("Candy", canny)
-
-    for template in templates:
-        w, h= template[0].shape[::-1]
-        for aoi in aoi_list:
-            if(aoi.img.shape[0] > template[0].shape[0] and aoi.img.shape[1] > template[0].shape[1]):
-                matches = (cv.matchTemplate(aoi.img,template[0],cv.TM_CCOEFF_NORMED), template[1], w, h, template[2], template[3], aoi.pos1)
-                output.append(matches)
-
-
-        # matches = (cv.matchTemplate(img_gray,template[0],cv.TM_CCOEFF_NORMED), template[1], w, h, template[2], template[3], np.array([0,0]))
-        # output.append(matches)
-
-
-    end = time.time() - start
-    print(end)
-
-    for set in output:
-        positions = np.where( set[0] >= set[4])
-        for position in list(zip(*positions[::-1])):
-            position += set[6]
-            cv.rectangle(img_rgb, position, (position[0] + set[2], position[1] + set[3]), set[5], 2)
-            cv.putText(img_rgb, set[1], position, cv.FONT_HERSHEY_COMPLEX, 0.5, set[5],1 )
-
-
-
-    cv.imwrite('res.png',img_rgb)
-    img_rgb = cv.cvtColor(img_rgb, cv.COLOR_BGR2RGB)
-    plt.imshow(img_rgb)
-    plt.show()

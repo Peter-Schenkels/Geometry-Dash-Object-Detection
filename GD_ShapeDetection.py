@@ -25,8 +25,7 @@ for contour in contours[1:]:
     # findcontour function detects whole image as shape
   
     # cv2.approxPloyDP() function to approximate the shape
-    approx = cv2.approxPolyDP(
-        contour, 0.01 * cv2.arcLength(contour, True), True)
+    approx = cv2.approxPolyDP(contour, 0.01 * cv2.arcLength(contour, True), True)
       
     # # using drawContours() function
     # cv2.drawContours(img, [contour], 0, (0, 0, 255), 2)

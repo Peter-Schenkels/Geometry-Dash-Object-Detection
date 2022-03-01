@@ -124,17 +124,23 @@ def GetAreaOfInterest(image, range = 200):
 
     print(time.time() - start)
     cv.imshow("Canny", img)
-
+    aoi_list = []
     im_with_keypoints = image.copy()
-    for group in groups:
-        cv.rectangle(im_with_keypoints , (group.rect.pos1[0],group.rect.pos1[1]) , (group.rect.pos2[0],group.rect.pos2[1]), group.color, 2)
-        im_with_keypoints = cv.drawKeypoints(im_with_keypoints, group.blobs, np.array([]),  group.color, cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+    if(groups is not False):
+        for group in groups:
+            cv.rectangle(im_with_keypoints , (group.rect.pos1[0],group.rect.pos1[1]) , (group.rect.pos2[0],group.rect.pos2[1]), group.color, 2)
+            im_with_keypoints = cv.drawKeypoints(im_with_keypoints, group.blobs, np.array([]),  group.color, cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        
+      
+        for group in groups:
+            aoi_list.append(AreaOfInterest(image, group.rect.pos1, group.rect.pos2))
     
+    else:
+        cv.rectangle(im_with_keypoints, (0,0), (img.shape[0], img.shape[1]), (0, 255, 0), 2)
+        aoi_list.append(AreaOfInterest(image, (0,0), (img.shape[0], img.shape[1])))
     cv.imshow("blobps", im_with_keypoints)
 
-    aoi_list = []
-    for group in groups:
-        aoi_list.append(AreaOfInterest(image, group.rect.pos1, group.rect.pos2))
+    
     
     return aoi_list
 

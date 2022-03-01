@@ -12,7 +12,7 @@ edges = cv2.Canny(image,800,800)
 cv2.imshow("edges", edges)
 # Apply HoughLinesP method to
 # to directly obtain line end points
-def LineDetection(edges, image)
+def LineDetection(edges, image):
     lines = cv2.HoughLinesP(
                 edges, # Input edge image
                 1, # Distance resolution in pixels

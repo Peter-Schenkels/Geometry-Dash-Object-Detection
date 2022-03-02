@@ -16,13 +16,19 @@ def getRandomColor(nrOfColors):
     return (random.randint(1, 255), random.randint(1, 255) , random.randint(1, 255) )
 
 
-def distance(kpt1, kpt2):
+def distanceBlob(kpt1, kpt2):
     #create numpy array with keypoint positions
     arr = np.array([kpt1.pt, kpt2.pt])
     #return distance, calculted by pythagoras
     return np.sqrt(np.sum((arr[0]-arr[1])**2))
 
-class Rect:
+def distance(kpt1, kpt2):
+    #create numpy array with keypoint positions
+    arr = np.array([kpt1[0], kpt2[0]])
+    #return distance, calculted by pythagoras
+    return np.sqrt(np.sum((arr[0]-arr[1])**2))
+
+class BlobRect:
     def __init__(self, blob) -> None:
         self.left = blob.pt[0]
         self.right = blob.pt[0]
@@ -51,6 +57,37 @@ class Rect:
             self.pos1 = np.array([self.right, self.top], dtype=np.int64)
             self.pos2 = np.array([self.left, self.bottom], dtype=np.int64)
 
+class PointRect:
+    def __init__(self, blob) -> None:
+        blob = blob[0]
+        self.left = blob[0]
+        self.right = blob[0]
+        self.top = blob[1]
+        self.bottom = blob[1]
+        self.pos1 = (int(blob[0]), int(blob[1]))
+        self.pos2 = (int(blob[0] + 100), int(blob[1] + 100))
+
+    def update(self, newBlob):
+        updated = False
+        newBlob = newBlob[0]
+        if(newBlob[0] - 10 < self.left):
+            self.left = int(newBlob[0] - 10)
+            updated = True
+        if(newBlob[0] + 10 > self.right):
+            self.right = int(newBlob[0] + 10)
+            updated = True
+        if(newBlob[1] + 10 > self.top):
+            self.top = int(newBlob[1] + 10)
+            updated = True
+        if(newBlob[1] - 10 < self.bottom):
+            self.bottom = int(newBlob[1] - 10)
+            updated = True
+        
+
+        if(updated is True):
+            self.pos1 = np.array([self.right, self.top], dtype=np.int64)
+            self.pos2 = np.array([self.left, self.bottom], dtype=np.int64)
+
 class Group:
     def __init__(self, blobs, color, rect) -> None:
         self.blobs = blobs
@@ -66,7 +103,33 @@ def classifyBlobs(blobs, range, image):
         return False
     for blob in blobs:
         if(lastBlob == None):
-            groups.append(Group([blob], getRandomColor(12), Rect(blob)))
+            groups.append(Group([blob], getRandomColor(12), BlobRect(blob)))
+        else:
+            for group in groups:
+                grouped = False
+                for groupBlob in group.blobs:
+                    dist = distanceBlob(groupBlob, blob)
+                    if(dist < range):
+                        group.rect.update(blob)
+                        group.blobs.append(blob)
+                        grouped = True
+                        break
+                    if(grouped is True):
+                        break
+                if(grouped is True):
+                    break
+            else:
+                groups.append(Group([blob], getRandomColor(12), BlobRect(blob)))
+        lastBlob = blob
+    return groups
+
+def classifyCorners(corners, range, image):
+    groups = []
+    first = True
+    for blob in corners:
+        if(first is True):
+            groups.append(Group([blob], getRandomColor(12), PointRect(blob)))
+            first = False
         else:
             for group in groups:
                 grouped = False
@@ -82,7 +145,7 @@ def classifyBlobs(blobs, range, image):
                 if(grouped is True):
                     break
             else:
-                groups.append(Group([blob], getRandomColor(12), Rect(blob)))
+                groups.append(Group([blob], getRandomColor(12), PointRect(blob)))
         lastBlob = blob
     return groups
         
@@ -104,34 +167,41 @@ class RegionOfInterest:
 
         self.img = cv.Canny(img[self.pos1[1]:self.pos2[1], self.pos1[0]:self.pos2[0]], 800, 800)
 
-def GetRegionOfInterest(image, range = 200, draw=False):
-    # Setup SimpleBlobDetector parameters.
-    params = cv.SimpleBlobDetector_Params()
+def GetRegionOfInterest(image, range, draw=True, blob=None):
+    if(blob):
+        # Setup SimpleBlobDetector parameters.
+        params = cv.SimpleBlobDetector_Params()
 
-    # Change thresholds
-    params.minThreshold = 50
-    params.maxThreshold = 200
+        # Change thresholds
+        params.minThreshold = 50
+        params.maxThreshold = 200
 
-    # Filter by Area.
-    params.filterByArea = True
-    params.minArea = 90
+        # Filter by Area.
+        params.filterByArea = True
+        params.minArea = 90
 
-    # Filter by Circularity
-    params.filterByCircularity = False
-    params.minCircularity = 0.2
+        # Filter by Circularity
+        params.filterByCircularity = False
+        params.minCircularity = 0.2
 
-    # # Filter by Convexity
-    # params.filterByConvexity = True
-    # params.minConvexity = 0.2
+        # # Filter by Convexity
+        # params.filterByConvexity = True
+        # params.minConvexity = 0.2
 
-    # Filter by Inertia
-    params.filterByInertia = False
-    params.minInertiaRatio = 0.01
+        # Filter by Inertia
+        params.filterByInertia = False
+        params.minInertiaRatio = 0.01
 
-    downscale_perc = 50
-    img = cv.Canny(ScaleImage(image), 100, 400)
-    keypoints = cv.SimpleBlobDetector_create(params).detect(img)
-    groups = classifyBlobs(keypoints, range, img)
+        downscale_perc = 50
+        img = cv.Canny(ScaleImage(image), 100, 400)
+        LineDetection(img, img)
+        keypoints = cv.SimpleBlobDetector_create(params).detect(img)
+        groups = classifyBlobs(keypoints, range, img)
+    else:
+        gray = cv.cvtColor(image,cv.COLOR_BGR2GRAY)
+        corners = cv.goodFeaturesToTrack(gray,40,0.01,50)
+        corners = np.int0(corners)
+        groups = classifyCorners(corners, range, image)
     
     if(draw is True):
         im_with_keypoints = image.copy()
@@ -140,8 +210,13 @@ def GetRegionOfInterest(image, range = 200, draw=False):
         if(draw is True):
             for group in groups:
                 cv.rectangle(im_with_keypoints , (group.rect.pos1[0],group.rect.pos1[1]) , (group.rect.pos2[0],group.rect.pos2[1]), group.color, 2)
-                im_with_keypoints = cv.drawKeypoints(im_with_keypoints, group.blobs, np.array([]),  group.color, cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        
+                if(blob):
+                    im_with_keypoints = cv.drawKeypoints(im_with_keypoints, group.blobs, np.array([]),  group.color, cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                else:
+                    for i in corners:
+                        x,y = i.ravel()
+                        cv.circle(im_with_keypoints,(x,y),7,25,-1)
+
     
         for group in groups:
             roi_list.append(RegionOfInterest(image, group.rect.pos1, group.rect.pos2))
@@ -186,10 +261,10 @@ def openAndScaleImage(filename):
 def contains(r1, r2):
        return r1.x1 < r2.x1 < r2.x2 < r1.x2 and r1.y1 < r2.y1 < r2.y2 < r1.y2
 
-def GeomDecter(input, templates, roi_enabled=True):    
+def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=300):    
     img_rgb = ScaleImage(input)
     if(roi_enabled is True):
-        roi_list = GetRegionOfInterest(img_rgb, 300)
+        roi_list = GetRegionOfInterest(img_rgb, roi_sensitivity, blob)
     else:
         img = ScaleImage(cv.Canny(input, 800, 800))
     output = []
@@ -281,7 +356,9 @@ if __name__ == "__main__":
         start = time.time()
         read, frame = skyradio.read()
         if(read is True):
-            output = GeomDecter(frame, templates, True)
+            output = GeomDecter(frame, templates, roi_enabled=True, roi_sensitivity=300)
+            
+            # cv.imshow('frame', LineDetection(cv.Canny(frame, 800, 800), frame))
             cv.imshow('frame', output)
             if cv.waitKey(1) == ord('q'):
                 break

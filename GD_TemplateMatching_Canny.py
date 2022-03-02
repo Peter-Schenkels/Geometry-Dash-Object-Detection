@@ -179,7 +179,7 @@ if __name__ == "__main__":
 
 
     img_rgb = openAndScaleImage('image_04.jpg')
-    roi_list = GetRegionOfInterest(img_rgb, 300)
+    roi_list = GetRegionOfInterest(img_rgb, 300, draw)
 
     img_gray = cv.cvtColor(img_rgb, cv.COLOR_BGR2GRAY)
 

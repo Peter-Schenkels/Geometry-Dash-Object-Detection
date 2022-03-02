@@ -1,7 +1,5 @@
 from tempfile import template
 import cv2 as cv
-from cv2 import imshow
-from cv2 import rectangle
 import numpy as np
 from matplotlib import pyplot as plt
 import time
@@ -51,8 +49,6 @@ class BlobRect:
         if(newBlob.pt[1] - newBlob.size < self.bottom):
             self.bottom = int(newBlob.pt[1] - newBlob.size)
             updated = True
-        
-
         if(updated is True):
             self.pos1 = np.array([self.right, self.top], dtype=np.int64)
             self.pos2 = np.array([self.left, self.bottom], dtype=np.int64)
@@ -261,10 +257,10 @@ def openAndScaleImage(filename):
 def contains(r1, r2):
        return r1.x1 < r2.x1 < r2.x2 < r1.x2 and r1.y1 < r2.y1 < r2.y2 < r1.y2
 
-def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=300):    
+def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=100):    
     img_rgb = ScaleImage(input)
     if(roi_enabled is True):
-        roi_list = GetRegionOfInterest(img_rgb, roi_sensitivity, blob)
+        roi_list = GetRegionOfInterest(img_rgb, roi_sensitivity, True, blob)
     else:
         img = ScaleImage(cv.Canny(input, 800, 800))
     output = []
@@ -287,7 +283,7 @@ def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=3
         positions = np.where( set[0] >= set[4])
 
         for position in list(zip(*positions[::-1])):
-            if mask[position[1] + int(round(set[3]/6)), position[0] + int(round(set[2]/6))] != 255:
+            if mask[position[1] + int(round(set[3]/100)), position[0] + int(round(set[2]/100))] != 255:
                 mask[position[1]:position[1]+ set[3], position[0]:position[0]+ set[2]] = 255
                 position = (position[0] + set[6][0], + position[1] + set[6][1])
                 cv.rectangle(img_rgb, position, (position[0] + set[2], position[1] + set[3]), set[5], 2)
@@ -301,9 +297,9 @@ def LineDetection(edges, image):
     lines = cv.HoughLinesP(
                 edges, # Input edge image
                 1, # Distance resolution in pixels
-                np.pi/2, # Angle resolution in radians
+                np.pi/180, # Angle resolution in radians
                 threshold=3, # Min number of votes for valid line
-                minLineLength=30, # Min allowed length of line
+                minLineLength=10, # Min allowed length of line
                 maxLineGap=10 # Max allowed gap between line for joining them
                 )
     # Iterate over points
@@ -347,16 +343,16 @@ if __name__ == "__main__":
     # templates.append((openAndScaleTemplate('Templates/spikes_template_01.png'), "Spikes_01", 0.7, (255, 255, 0)))
     templates.append((openAndScaleTemplate('CannyTemplates/player.png'), "player", 0.5, (255, 0, 255)))
     templates.append((openAndScaleTemplate('CannyTemplates/platform_01.png'), "platform_01", 0.91, (0, 255, 0)))
-    templates.append((openAndScaleTemplate('CannyTemplates/spike_01.png'), "Spikes_01", 0.5, (255, 255, 0)))
+    templates.append((openAndScaleTemplate('CannyTemplates/spike_01.png'), "Spikes_01", 0.6, (255, 255, 0)))
     templates.append((openAndScaleTemplate('CannyTemplates/horizontal.png'), "Platform", 0.7, (0, 255, 0)))
     templates.append((openAndScaleTemplate('CannyTemplates/vertical.png'), "Wall", 0.7, (0, 0, 255)))
-    templates.append((openAndScaleTemplate('CannyTemplates/spike_02.png'), "Spikes_01", 0.5, (255, 255, 0)))
+    templates.append((openAndScaleTemplate('CannyTemplates/spike_02.png'), "Spikes_01", 0.6, (255, 255, 0)))
 
     while skyradio.isOpened():
         start = time.time()
         read, frame = skyradio.read()
         if(read is True):
-            output = GeomDecter(frame, templates, roi_enabled=True, roi_sensitivity=300)
+            output = GeomDecter(frame, templates, roi_enabled=True, roi_sensitivity=200)
             
             # cv.imshow('frame', LineDetection(cv.Canny(frame, 800, 800), frame))
             cv.imshow('frame', output)

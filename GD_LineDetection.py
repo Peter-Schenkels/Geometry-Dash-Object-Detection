@@ -9,7 +9,7 @@ image = cv2.imread('image_01.jpg')
  
 # Use canny edge detection
 edges = cv2.Canny(image,800,800)
-cv2.imshow("edges", edges)
+# cv2.imshow("edges", edges)
 # Apply HoughLinesP method to
 # to directly obtain line end points
 def LineDetection(edges, image):

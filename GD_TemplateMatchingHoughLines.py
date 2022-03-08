@@ -14,15 +14,9 @@ def getRandomColor(nrOfColors):
     return (random.randint(1, 255), random.randint(1, 255) , random.randint(1, 255) )
 
 
-def distanceBlob(kpt1, kpt2):
-    #create numpy array with keypoint positions
-    arr = np.array([kpt1.pt, kpt2.pt])
-    #return distance, calculted by pythagoras
-    return np.sqrt(np.sum((arr[0]-arr[1])**2))
-
 def distance(kpt1, kpt2):
     #create numpy array with keypoint positions
-    arr = np.array([kpt1[0], kpt2[0]])
+    arr = np.array([kpt1, kpt2])
     #return distance, calculted by pythagoras
     return np.sqrt(np.sum((arr[0]-arr[1])**2))
 
@@ -104,7 +98,7 @@ def classifyBlobs(blobs, range, image):
             for group in groups:
                 grouped = False
                 for groupBlob in group.blobs:
-                    dist = distanceBlob(groupBlob, blob)
+                    dist = distance(groupBlob.pt, blob.pt)
                     if(dist < range):
                         group.rect.update(blob)
                         group.blobs.append(blob)
@@ -130,7 +124,7 @@ def classifyCorners(corners, range, image):
             for group in groups:
                 grouped = False
                 for groupBlob in group.blobs:
-                    dist = distance(groupBlob, blob)
+                    dist = distance(groupBlob[0], blob[0])
                     if(dist < range):
                         group.rect.update(blob)
                         group.blobs.append(blob)
@@ -161,7 +155,8 @@ class RegionOfInterest:
         if(self.pos2[1] < 0):
             self.pos2[1] = 0
 
-        self.img = cv.Canny(img[self.pos1[1]:self.pos2[1], self.pos1[0]:self.pos2[0]], 800, 800)
+        kernel = np.ones((5, 5), 'uint8')
+        self.img = cv.dilate(cv.Canny(img[self.pos1[1]:self.pos2[1], self.pos1[0]:self.pos2[0]], 800, 800), kernel, iterations=1)
 
 def GetRegionOfInterest(image, range, draw=True, blob=None):
     if(blob):
@@ -194,8 +189,11 @@ def GetRegionOfInterest(image, range, draw=True, blob=None):
         keypoints = cv.SimpleBlobDetector_create(params).detect(img)
         groups = classifyBlobs(keypoints, range, img)
     else:
-        gray = cv.cvtColor(image,cv.COLOR_BGR2GRAY)
-        corners = cv.goodFeaturesToTrack(gray,40,0.01,50)
+        canny = cv.Canny(image, 700, 800)
+        kernel = np.ones((5, 5), 'uint8')
+        canny = cv.dilate(canny, kernel, iterations=1)
+        # gray = cv.cvtColor(image,cv.COLOR_BGR2GRAY)
+        corners = cv.goodFeaturesToTrack(canny,40,0.01,50)
         corners = np.int0(corners)
         groups = classifyCorners(corners, range, image)
     
@@ -254,15 +252,18 @@ def openAndScaleImage(filename):
     dim = (width, height)
     return cv.resize(img, dim)
 
-def contains(r1, r2):
-       return r1.x1 < r2.x1 < r2.x2 < r1.x2 and r1.y1 < r2.y1 < r2.y2 < r1.y2
-
 def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=100):    
     img_rgb = ScaleImage(input)
+    canny = cv.Canny(img_rgb, 700, 1000)
+    kernel = np.ones((3, 3), 'uint8')
+    canny = cv.dilate(canny, kernel, iterations=1)
+    cv.imshow("Kurkel", canny)
+    
     if(roi_enabled is True):
         roi_list = GetRegionOfInterest(img_rgb, roi_sensitivity, True, blob)
     else:
-        img = ScaleImage(cv.Canny(input, 800, 800))
+        kernel = np.ones((5, 5), 'uint8')
+        img = cv.dilate(ScaleImage(cv.Canny(input, 800, 800)), kernel, iterations=1)
     output = []
     for template in templates:
         w, h= template[0].shape[::-1]
@@ -283,39 +284,53 @@ def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=1
         positions = np.where( set[0] >= set[4])
 
         for position in list(zip(*positions[::-1])):
-            if mask[position[1] + int(round(set[3]/100)), position[0] + int(round(set[2]/100))] != 255:
+            if mask[position[1] + int(round(set[3]/10)), position[0] + int(round(set[2]/10))] != 255:
                 mask[position[1]:position[1]+ set[3], position[0]:position[0]+ set[2]] = 255
                 position = (position[0] + set[6][0], + position[1] + set[6][1])
                 cv.rectangle(img_rgb, position, (position[0] + set[2], position[1] + set[3]), set[5], 2)
                 cv.putText(img_rgb, set[1], position, cv.FONT_HERSHEY_COMPLEX, 0.5, set[5],1 )
+    if(roi_enabled is True):
+        for roi in roi_list:
+            if(roi.img.any()):
+                img_rgb = LineDetection(roi.img, img_rgb, roi.pos1)
+    else:
+        img_rgb = LineDetection(canny, img_rgb)
+    #get walls and platforms
+    
 
+    # return LineDetection(canny, img_rgb)
     return img_rgb
 
 #This function will in the future replace the vertical and horizontal templates 
-def LineDetection(edges, image):
-    image = cv.Canny(image, 10000, 10000)
+def LineDetection(edges, img, pos=(0,0)):
+    # cv.imshow("edjes", edges)
+    # cv.waitKey(0)
     lines = cv.HoughLinesP(
                 edges, # Input edge image
-                1, # Distance resolution in pixels
-                np.pi/180, # Angle resolution in radians
-                threshold=3, # Min number of votes for valid line
-                minLineLength=10, # Min allowed length of line
-                maxLineGap=10 # Max allowed gap between line for joining them
+                2, # Distance resolution in pixels
+                np.pi/2, # Angle resolution in radians
+                threshold=30, # Min number of votes for valid line
+                minLineLength=40, # Min allowed length of line
+                maxLineGap=1 # Max allowed gap between line for joining them
                 )
     # Iterate over points
-    for points in lines:
-        # Extracted points nested in the list
-        x1,y1,x2,y2=points[0]
-        # Draw the lines joing the points
-        # On the original image
-        cv.line(image,(x1,y1),(x2,y2),(255,255,255),2)
-        # Maintain a simples lookup list for points
-        # lines_list.append([(x1,y1),(x2,y2)])
+    if(lines is not None):
+        for points in lines:
+            # Extracted points nested in the list
+            x1,y1,x2,y2=points[0]
+            # Draw the lines joing the points
+            # On the original image
+            if(x1 != x2):
+                cv.putText(img, "Platform", (x1+pos[0],y1+pos[1]), cv.FONT_HERSHEY_COMPLEX, 0.5,(0,255,0),1 )
+                cv.line(img,(x1+pos[0],y1+pos[1]),(x2+pos[0],y2+pos[1]),(0,255,0),2)
+            else:
+                cv.putText(img, "Wall", (x1+pos[0],y1+pos[1]), cv.FONT_HERSHEY_COMPLEX, 0.5,(0,0,255),1 )
+                cv.line(img,(x1+pos[0],y1+pos[1]),(x2+pos[0],y2+pos[1]),(0,0,255),2)
+            # Maintain a simples lookup list for points
+            # lines_list.append([(x1,y1),(x2,y2)])
     
-    return image
+    return img
      
-
-
 if __name__ == "__main__":
 
     fps = 30
@@ -323,40 +338,28 @@ if __name__ == "__main__":
     
     if not skyradio.isOpened():
         raise Exception("Skyradio staat niet aan!!!")
-    skyradio.set(cv.CAP_PROP_POS_FRAMES, 300)
+    
+    skyradio.set(cv.CAP_PROP_POS_FRAMES, 200)
     templates =  []
 
-    platform_threshold = 0.83
-    spike_threshold = 0.80
-
-    # templates.append((openAndScaleTemplate('Templates/platform_template_01.png'), "platform_01", platform_threshold , (0, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/platform_template_02.png'), "platform_02", platform_threshold , (0, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/platform_template_03.png'), "platform_03", platform_threshold , (0, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/platform_template_04.png'), "platform_04", platform_threshold , (0, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/platform_template_05.png'), "platform_05", platform_threshold , (0, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/platform_template_06.png'), "platform_06", platform_threshold , (0, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/platform_template_07.png'), "platform_07", platform_threshold , (0, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/spike_template_01.png'), "Spike_01", spike_threshold, (255, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/spike_template_02.png'), "Spike_02", spike_threshold, (255, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/spike_template_03.png'), "Spike_03", spike_threshold, (255, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/spike_template_04.png'), "Spike_04", spike_threshold, (255, 255, 0)))
-    # templates.append((openAndScaleTemplate('Templates/spikes_template_01.png'), "Spikes_01", 0.7, (255, 255, 0)))
     # templates.append((openAndScaleTemplate('CannyTemplates/player.png'), "player", 0.5, (255, 0, 255)))
-    templates.append((openAndScaleTemplate('CannyTemplates/platform_01.png'), "platform_01", 0.91, (0, 255, 0)))
-    templates.append((openAndScaleTemplate('CannyTemplates/spike_01.png'), "Spikes_01", 0.5, (255, 255, 0)))
-    templates.append((openAndScaleTemplate('CannyTemplates/horizontal.png'), "Platform", 0.7, (0, 255, 0)))
-    templates.append((openAndScaleTemplate('CannyTemplates/vertical.png'), "Wall", 0.7, (0, 0, 255)))
-    templates.append((openAndScaleTemplate('CannyTemplates/spike_02.png'), "Spikes_01", 0.5, (255, 255, 0)))
+    # templates.append((openAndScaleTemplate('CannyTemplates/platform_01.png'), "platform_01", 0.91, (0, 255, 0)))
+    # templates.append((openAndScaleTemplate('CannyTemplates2/horizontal_01.png'), "Platform", 0.7, (0, 255, 0)))
+    # templates.append((openAndScaleTemplate('CannyTemplates2/vertical_01.png'), "Wall", 0.8, (0, 0, 255)))
+    templates.append((openAndScaleTemplate('CannyTemplates2/spike_01.png'), "Spikes_01", 0.5, (255, 255, 0)))
+    templates.append((openAndScaleTemplate('CannyTemplates2/spike_02.png'), "Spikes_01", 0.5, (255, 255, 0)))
+    templates.append((openAndScaleTemplate('CannyTemplates2/spikes_01.png'), "Spikes_02", 0.6, (255, 255, 0)))
+    templates.append((openAndScaleTemplate('CannyTemplates2/spikes_02.png'), "Spikes_03", 0.6, (255, 255, 0)))
 
     while skyradio.isOpened():
         start = time.time()
         read, frame = skyradio.read()
-        if(read is True):
-            output = GeomDecter(frame, templates, roi_enabled=True, roi_sensitivity=200)
+        if(read):
+            output = GeomDecter(frame, templates, roi_enabled=False, roi_sensitivity=200)
             
             # cv.imshow('frame', LineDetection(cv.Canny(frame, 800, 800), frame))
             cv.imshow('frame', output)
             if cv.waitKey(1) == ord('q'):
                 break
-        while time.time() - start < 1/fps:
-            continue
+        # while time.time() - start < 1/fps:
+            # continue

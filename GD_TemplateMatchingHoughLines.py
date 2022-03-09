@@ -1,11 +1,14 @@
 from tempfile import template
+from tokenize import group
 import cv2 as cv
 import numpy as np
 from matplotlib import pyplot as plt
 import time
+from typing import *
 import random
 
 
+player_pos = ((0,0), 100)
 
 #TODO detect grid en slice image in cells
 
@@ -79,7 +82,7 @@ class PointRect:
             self.pos2 = np.array([self.left, self.bottom], dtype=np.int64)
 
 class Group:
-    def __init__(self, blobs, color, rect) -> None:
+    def __init__(self, blobs, color, rect: Union[PointRect, BlobRect]) -> None:
         self.blobs = blobs
         self.color = color
         self.rect = rect
@@ -158,6 +161,31 @@ class RegionOfInterest:
         kernel = np.ones((5, 5), 'uint8')
         self.img = cv.dilate(cv.Canny(img[self.pos1[1]:self.pos2[1], self.pos1[0]:self.pos2[0]], 800, 800), kernel, iterations=1)
 
+
+def modifyOverlappingGroups(groups: List[Group]):
+    # x,y = 0, 1
+    # newGroups = []
+    # for selected_group in groups:
+    #     for group in groups:
+            
+    #         # if(selected_group.rect.pos1[0] < group.rect.pos1[0] and selected_group.rect.pos2[0] > group.rect.pos1[0]):
+    #         #     if(selected_group.pos1[1] < group.rect.pos1[1] and selected_group.pos2[1] > group.rect.pos1[1]):
+    #         #          group.rect.pos1[0] = selected_group.rect.pos2[0]
+    #         if(selected_group.rect.pos1[x] < group.rect.pos1[x] and 
+    #            selected_group.rect.pos2[x] > group.rect.pos1[x] and
+    #            selected_group.rect.pos1[y] < group.rect.pos1[y] and 
+    #            selected_group.rect.pos2[y] > group.rect.pos1[y] and
+    #            selected_group.rect.pos1[x] < group.rect.pos2[x] and 
+    #            selected_group.rect.pos2[x] > group.rect.pos2[x] and
+    #            selected_group.rect.pos1[y] < group.rect.pos2[y] and 
+    #            selected_group.rect.pos2[y] > group.rect.pos2[y]
+    #            ):
+    #             continue
+    #         newGroups.append(group)
+        
+    # return newGroups
+    return groups
+ 
 def GetRegionOfInterest(image, range, draw=True, blob=None):
     if(blob):
         # Setup SimpleBlobDetector parameters.
@@ -195,7 +223,8 @@ def GetRegionOfInterest(image, range, draw=True, blob=None):
         # gray = cv.cvtColor(image,cv.COLOR_BGR2GRAY)
         corners = cv.goodFeaturesToTrack(canny,40,0.01,50)
         corners = np.int0(corners)
-        groups = classifyCorners(corners, range, image)
+        groups = modifyOverlappingGroups(classifyCorners(corners, range, image))
+        # groups = classifyCorners(corners, range, image)
     
     if(draw is True):
         im_with_keypoints = image.copy()
@@ -252,12 +281,63 @@ def openAndScaleImage(filename):
     dim = (width, height)
     return cv.resize(img, dim)
 
+
+def getPlayer(img, last_player_pos):
+    
+    offset_x = int(img.shape[0]/1.666)
+    print(last_player_pos)
+    last_player_pos = ((last_player_pos[0][0]-offset_x, last_player_pos[0][1]), last_player_pos[1])
+    img = img[0:img.shape[1], offset_x:offset_x+121]
+    # Threshold of blue in HSV space
+    lower_black = np.array([0, 0, 0])
+    upper_black = np.array([360, 255, 15])
+ 
+    hsv_img = cv.cvtColor(img, cv.COLOR_BGR2HSV)
+    # preparing the mask to overlay
+    mask = cv.inRange(hsv_img, lower_black, upper_black)
+    possible_player_pos = []
+    contours, _ = cv.findContours(mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+    for contour in contours[1:]:
+      
+        # cv2.approxPloyDP() function to approximate the shape
+        approx = cv.approxPolyDP(contour, 0.15 * cv.arcLength(contour, True), True)
+        M = cv.moments(contour)
+        # cv.drawContours(img, [contour], 0, (0, 0, 255), 2)
+        if M['m00'] != 0.0:
+            x = int(M['m10']/M['m00'])
+            y = int(M['m01']/M['m00'])
+            if len(approx) < 6:
+                pos, _ = last_player_pos
+                last_x, last_y = pos
+                delta = (abs(last_x - x) + abs(last_y - y))
+                if(delta == 0):
+                    chance = 1
+                else:
+                    chance = 1 / delta
+                    
+                possible_player_pos.append(((x, y), chance))
+               
+    if(len(possible_player_pos) > 0):
+        player_pos = max(possible_player_pos, key=lambda item:item[1])
+    else:
+        player_pos = last_player_pos
+    
+    # cv.putText(img, 'Player', (0, y), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    player_pos = ((offset_x, player_pos[0][1]), player_pos[1])
+    print(player_pos)
+    return img, player_pos
+
 def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=100):    
+    global player_pos
+    
     img_rgb = ScaleImage(input)
     canny = cv.Canny(img_rgb, 700, 1000)
     kernel = np.ones((3, 3), 'uint8')
     canny = cv.dilate(canny, kernel, iterations=1)
     cv.imshow("Kurkel", canny)
+    player_img, player_pos = getPlayer(img_rgb , player_pos)
+    
+    cv.imshow('Player img', player_img)
     
     if(roi_enabled is True):
         roi_list = GetRegionOfInterest(img_rgb, roi_sensitivity, True, blob)
@@ -296,7 +376,7 @@ def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=1
     else:
         img_rgb = LineDetection(canny, img_rgb)
     #get walls and platforms
-    
+    cv.putText(img_rgb, 'Player', (player_pos[0][0], player_pos[0][1]-20), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
 
     # return LineDetection(canny, img_rgb)
     return img_rgb
@@ -341,11 +421,7 @@ if __name__ == "__main__":
     
     skyradio.set(cv.CAP_PROP_POS_FRAMES, 200)
     templates =  []
-
-    # templates.append((openAndScaleTemplate('CannyTemplates/player.png'), "player", 0.5, (255, 0, 255)))
-    # templates.append((openAndScaleTemplate('CannyTemplates/platform_01.png'), "platform_01", 0.91, (0, 255, 0)))
-    # templates.append((openAndScaleTemplate('CannyTemplates2/horizontal_01.png'), "Platform", 0.7, (0, 255, 0)))
-    # templates.append((openAndScaleTemplate('CannyTemplates2/vertical_01.png'), "Wall", 0.8, (0, 0, 255)))
+    
     templates.append((openAndScaleTemplate('CannyTemplates2/spike_01.png'), "Spikes_01", 0.5, (255, 255, 0)))
     templates.append((openAndScaleTemplate('CannyTemplates2/spike_02.png'), "Spikes_01", 0.5, (255, 255, 0)))
     templates.append((openAndScaleTemplate('CannyTemplates2/spikes_01.png'), "Spikes_02", 0.6, (255, 255, 0)))
@@ -355,11 +431,9 @@ if __name__ == "__main__":
         start = time.time()
         read, frame = skyradio.read()
         if(read):
-            output = GeomDecter(frame, templates, roi_enabled=False, roi_sensitivity=200)
-            
-            # cv.imshow('frame', LineDetection(cv.Canny(frame, 800, 800), frame))
+            output = GeomDecter(frame, templates, roi_enabled=True, roi_sensitivity=200)
             cv.imshow('frame', output)
             if cv.waitKey(1) == ord('q'):
                 break
-        # while time.time() - start < 1/fps:
-            # continue
+        while time.time() - start < 1/fps:
+            continue

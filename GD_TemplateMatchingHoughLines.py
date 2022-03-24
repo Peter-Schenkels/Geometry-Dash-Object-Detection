@@ -161,29 +161,7 @@ class RegionOfInterest:
         kernel = np.ones((5, 5), 'uint8')
         self.img = cv.dilate(cv.Canny(img[self.pos1[1]:self.pos2[1], self.pos1[0]:self.pos2[0]], 800, 800), kernel, iterations=1)
 
-
 def modifyOverlappingGroups(groups: List[Group]):
-    # x,y = 0, 1
-    # newGroups = []
-    # for selected_group in groups:
-    #     for group in groups:
-            
-    #         # if(selected_group.rect.pos1[0] < group.rect.pos1[0] and selected_group.rect.pos2[0] > group.rect.pos1[0]):
-    #         #     if(selected_group.pos1[1] < group.rect.pos1[1] and selected_group.pos2[1] > group.rect.pos1[1]):
-    #         #          group.rect.pos1[0] = selected_group.rect.pos2[0]
-    #         if(selected_group.rect.pos1[x] < group.rect.pos1[x] and 
-    #            selected_group.rect.pos2[x] > group.rect.pos1[x] and
-    #            selected_group.rect.pos1[y] < group.rect.pos1[y] and 
-    #            selected_group.rect.pos2[y] > group.rect.pos1[y] and
-    #            selected_group.rect.pos1[x] < group.rect.pos2[x] and 
-    #            selected_group.rect.pos2[x] > group.rect.pos2[x] and
-    #            selected_group.rect.pos1[y] < group.rect.pos2[y] and 
-    #            selected_group.rect.pos2[y] > group.rect.pos2[y]
-    #            ):
-    #             continue
-    #         newGroups.append(group)
-        
-    # return newGroups
     return groups
  
 def GetRegionOfInterest(image, range, draw=True, blob=None):
@@ -369,12 +347,12 @@ def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=1
                 position = (position[0] + set[6][0], + position[1] + set[6][1])
                 cv.rectangle(img_rgb, position, (position[0] + set[2], position[1] + set[3]), set[5], 2)
                 cv.putText(img_rgb, set[1], position, cv.FONT_HERSHEY_COMPLEX, 0.5, set[5],1 )
-    if(roi_enabled is True):
-        for roi in roi_list:
-            if(roi.img.any()):
-                img_rgb = LineDetection(roi.img, img_rgb, roi.pos1)
-    else:
-        img_rgb = LineDetection(canny, img_rgb)
+    # if(roi_enabled is True):
+    #     for roi in roi_list:
+    #         if(roi.img.any()):
+    #             img_rgb = LineDetection(roi.img, img_rgb, roi.pos1)
+    # else:
+    img_rgb = LineDetection(canny, img_rgb)
     #get walls and platforms
     cv.putText(img_rgb, 'Player', (player_pos[0][0], player_pos[0][1]-20), cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
 

@@ -1,5 +1,6 @@
 from tempfile import template
 import cv2 as cv
+from cv2 import Canny
 import numpy as np
 from matplotlib import pyplot as plt
 import time
@@ -94,7 +95,6 @@ class Group:
 def classifyBlobs(blobs, range, image):
     groups = []
     lastBlob = None
-    print(len(blobs))
     if(len(blobs) > 100):
         return False
     for blob in blobs:
@@ -119,7 +119,7 @@ def classifyBlobs(blobs, range, image):
         lastBlob = blob
     return groups
 
-def classifyCorners(corners, range, image):
+def classifyCorners(corners, range):
     groups = []
     first = True
     for blob in corners:
@@ -164,6 +164,7 @@ class RegionOfInterest:
         self.img = cv.Canny(img[self.pos1[1]:self.pos2[1], self.pos1[0]:self.pos2[0]], 800, 800)
 
 def GetRegionOfInterest(image, range, draw=True, blob=None):
+    performance_point = None
     if(blob):
         # Setup SimpleBlobDetector parameters.
         params = cv.SimpleBlobDetector_Params()
@@ -190,14 +191,20 @@ def GetRegionOfInterest(image, range, draw=True, blob=None):
 
         downscale_perc = 50
         img = cv.Canny(ScaleImage(image), 100, 400)
-        LineDetection(img, img)
         keypoints = cv.SimpleBlobDetector_create(params).detect(img)
+        start = time.time()
         groups = classifyBlobs(keypoints, range, img)
+        performance_point = (len(keypoints), time.time() - start) 
     else:
         gray = cv.cvtColor(image,cv.COLOR_BGR2GRAY)
         corners = cv.goodFeaturesToTrack(gray,40,0.01,50)
-        corners = np.int0(corners)
-        groups = classifyCorners(corners, range, image)
+        try:
+            if corners.all() != None:
+                corners = np.int0(corners)
+                groups = classifyCorners(corners, range)
+
+        except AttributeError:
+            return None
     
     if(draw is True):
         im_with_keypoints = image.copy()
@@ -221,9 +228,12 @@ def GetRegionOfInterest(image, range, draw=True, blob=None):
         if(draw is True):
             cv.rectangle(im_with_keypoints, (300,0), (img.shape[1], img.shape[0]), (0, 255, 0), 2)
         roi_list.append(RegionOfInterest(image, (300,0), (img.shape[1], img.shape[0])))
+
+
+    
     if(draw is True):  
         cv.imshow("blobps", im_with_keypoints)
-    return roi_list
+    return roi_list, performance_point
 
 def openAndScaleTemplate(filename):
     img = cv.imread(filename, 0)
@@ -257,27 +267,33 @@ def openAndScaleImage(filename):
 def contains(r1, r2):
        return r1.x1 < r2.x1 < r2.x2 < r1.x2 and r1.y1 < r2.y1 < r2.y2 < r1.y2
 
-def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=100):    
+def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=100):
+    start = time.time()
     img_rgb = ScaleImage(input)
+    performance_point = None
     if(roi_enabled is True):
-        roi_list = GetRegionOfInterest(img_rgb, roi_sensitivity, True, blob)
+        roi_list, performance_point = GetRegionOfInterest(img_rgb, roi_sensitivity, False, blob)
+
+        if(roi_list == None):
+            return 0, 0
     else:
         img = ScaleImage(cv.Canny(input, 800, 800))
     output = []
     for template in templates:
         w, h= template[0].shape[::-1]
         if(roi_enabled is True):
-            for roi in roi_list:
-                if(roi.img.any()):
-                    if(roi.img.shape[0] > template[0].shape[0] and roi.img.shape[1] > template[0].shape[1]):
-                        matches = (cv.matchTemplate(roi.img,template[0],cv.TM_CCOEFF_NORMED), template[1], w, h, template[2], template[3], roi.pos1)
-                        output.append(matches)
+            if(roi_list):
+                for roi in roi_list:
+                    if(roi.img.any()):
+                        if(roi.img.shape[0] > template[0].shape[0] and roi.img.shape[1] > template[0].shape[1]):
+                            matches = (cv.matchTemplate(roi.img,template[0],cv.TM_CCOEFF_NORMED), template[1], w, h, template[2], template[3], roi.pos1)
+                            output.append(matches)
         else:
             # cv.imshow("Canny", img)
             if(img.shape[0] > template[0].shape[0] and img.shape[1] > template[0].shape[1]):
                 matches = (cv.matchTemplate(img,template[0],cv.TM_CCOEFF_NORMED), template[1], w, h, template[2], template[3], (0,0))
                 output.append(matches)
-
+    end_time = time.time() - start
     mask = np.zeros(img_rgb.shape[:2], np.uint8)
     for set in output:
         positions = np.where( set[0] >= set[4])
@@ -289,7 +305,7 @@ def GeomDecter(input, templates, roi_enabled=False, blob=None, roi_sensitivity=1
                 cv.rectangle(img_rgb, position, (position[0] + set[2], position[1] + set[3]), set[5], 2)
                 cv.putText(img_rgb, set[1], position, cv.FONT_HERSHEY_COMPLEX, 0.5, set[5],1 )
 
-    return img_rgb
+    return img_rgb, end_time, performance_point 
 
 #This function will in the future replace the vertical and horizontal templates 
 def LineDetection(edges, image):
@@ -342,21 +358,47 @@ if __name__ == "__main__":
     # templates.append((openAndScaleTemplate('Templates/spike_template_04.png'), "Spike_04", spike_threshold, (255, 255, 0)))
     # templates.append((openAndScaleTemplate('Templates/spikes_template_01.png'), "Spikes_01", 0.7, (255, 255, 0)))
     # templates.append((openAndScaleTemplate('CannyTemplates/player.png'), "player", 0.5, (255, 0, 255)))
-    templates.append((openAndScaleTemplate('CannyTemplates/platform_01.png'), "platform_01", 0.91, (0, 255, 0)))
+    # templates.append((openAndScaleTemplate('CannyTemplates/platform_01.png'), "platform_01", 0.91, (0, 255, 0)))
     templates.append((openAndScaleTemplate('CannyTemplates/spike_01.png'), "Spikes_01", 0.5, (255, 255, 0)))
-    templates.append((openAndScaleTemplate('CannyTemplates/horizontal.png'), "Platform", 0.7, (0, 255, 0)))
-    templates.append((openAndScaleTemplate('CannyTemplates/vertical.png'), "Wall", 0.7, (0, 0, 255)))
+    templates.append((openAndScaleTemplate('CannyTemplates/horizontal.png'), "Platform", 0.6, (0, 255, 0)))
+    templates.append((openAndScaleTemplate('CannyTemplates/vertical.png'), "Wall", 0.6, (0, 0, 255)))
     templates.append((openAndScaleTemplate('CannyTemplates/spike_02.png'), "Spikes_01", 0.5, (255, 255, 0)))
-
+    frameNr = 0
+    results = []
+    algorythm = []
+    blob = None
     while skyradio.isOpened():
-        start = time.time()
+        
         read, frame = skyradio.read()
         if(read is True):
-            output = GeomDecter(frame, templates, roi_enabled=True, roi_sensitivity=200)
-            
+            output,end_time,performance_point = GeomDecter(frame, templates, roi_enabled=True, roi_sensitivity=200)
+            if(end_time == 0):
+                break
             # cv.imshow('frame', LineDetection(cv.Canny(frame, 800, 800), frame))
             cv.imshow('frame', output)
             if cv.waitKey(1) == ord('q'):
                 break
-        while time.time() - start < 1/fps:
-            continue
+            frameNr += 1
+            results.append((frameNr, end_time))
+            algorythm.append(performance_point)
+        # while time.time() - start < 1/fps:
+        #     continue
+    # output = GeomDecter(cv.imread("image_01.jpg"), templates, blob=True, roi_enabled=True, roi_sensitivity=200)
+    
+    fig1, ax1 = plt.subplots()
+    fig2, ax3 = plt.subplots()
+    x, y = zip(*results)
+    ax1.plot(x, y)
+    print(str(np.average(y)) + " avg")
+    ax1.set_ylabel("Time (s)")
+    ax1.set_xlabel("Frame NR")
+    if(blob):
+        x, y = zip(*algorythm)
+        print(str(np.average(y)) + " avg")
+        # ax2.scatter(x, y)
+        ax3.plot(y)
+        ax3.set_ylabel("Time (s)")
+        ax3.set_xlabel("Frame NR")
+    plt.show()
+    # cv.imshow('frame', output)
+    cv.waitKey(0)

@@ -1,2 +1,2 @@
 # Geometry Dash Object Detection
- School vision project
+ School computer vision project

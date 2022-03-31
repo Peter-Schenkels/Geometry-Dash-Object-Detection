@@ -9,7 +9,7 @@ import random
 player_pos = ((0, 0), 100)
 
 
-def getRandomColor(nrOfColors: int) -> tuple:
+def getRandomColor(nrOfColors: int):
     """Returns a random color in a range/resolution of the given parameter
 
     Args:
@@ -21,7 +21,7 @@ def getRandomColor(nrOfColors: int) -> tuple:
     return (random.randint(1, 255), random.randint(1, 255), random.randint(1, 255))
 
 
-def distance(kpt1: np.array, kpt2: np.ndarray) -> float:
+def distance(kpt1: np.array, kpt2: np.ndarray):
     """Returns distance between points in with help of the Pythagorean theorem
 
     Args:

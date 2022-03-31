@@ -5,7 +5,7 @@ import time
 
 
 # reading image
-img = cv2.imread('image_01.jpg')
+img = cv2.imread('Screenshots/image_01.jpg')
 start = time.time()  
 # converting image into grayscale image
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

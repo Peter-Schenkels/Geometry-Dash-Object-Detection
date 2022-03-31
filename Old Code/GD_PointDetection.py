@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 import time
 
 
-filename = 'image_05.jpg'
+filename = 'Screenshots/image_05.jpg'
 img = cv.imread(filename)
 
 timss = time.time()
